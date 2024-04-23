@@ -7,8 +7,8 @@ Ongoing advances in microbiome profiling have allowed unprecedented insights int
 This directory has all the functions required for running scripts Simulation.R and RunBRACElet.R
 
 # Other files
-Simulation.R simulates data for an example case study.
-RunBRACElet.R runs BRACElet for the simulated data example with compositional predictors and a continuous response.
-ProcessOutputs.R processes the outputs returned by RunBRACElet.R and calculates the performance metrics.
+* Simulation.R simulates data for an example case study.
+* RunBRACElet.R runs BRACElet for the simulated data example with compositional predictors and a continuous response.
+* ProcessOutputs.R processes the outputs returned by RunBRACElet.R and calculates the performance metrics.
 
 
