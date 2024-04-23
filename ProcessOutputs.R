@@ -1,3 +1,5 @@
+library(BhGLM)
+library(salso)
 beta_clust_labels_train <- lapply(results, function(x) apply(x$beta_clust_labels, 2, as.numeric))
 
 # Function to recreate a beta vector for a single iteration
