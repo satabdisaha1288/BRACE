@@ -45,7 +45,7 @@ sample_sigmasqr<-function(a_sigma,n,b_sigma, resp, abun_dat_agg, theta)
 sample_gammasqr<- function(a_gamma, K, theta)
 {
   gamma_shape = a_gamma + K/2
-  gamma_scale = 0.5* (t(theta) %*% theta)
+  gamma_scale =  b_gamma + 0.5* (t(theta) %*% theta)
   gamma_sqr <-rinvgamma(1, shape = gamma_shape, scale = gamma_scale)
   return(gamma_sqr)
 }
