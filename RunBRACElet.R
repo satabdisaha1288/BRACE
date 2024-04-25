@@ -87,7 +87,7 @@ while(repp <= repl)
                                       abun_dat_agg = abun_dat_agg[[iter]], resp=y, temp_beta_clust_labels = temp_beta_clust_labels)[[1]]
           sigma_sqr[iter]<-sample_sigmasqr_optim(a_sigma = a_sigma,n = n,b_sigma = b_sigma, 
                                                  resp = y, abun_dat_agg = abun_dat_agg[[iter]], theta = theta[[iter]])
-          gamma_sqr[iter]<-sample_gammasqr_optim(a_gamma = a_gamma, K = n_clust, 
+          gamma_sqr[iter]<-sample_gammasqr_optim(a_gamma = a_gamma,b_gamma = b_gamma, K = n_clust, 
                                                  theta = theta[[iter]])
           alpha[iter]<-sample_alpha_optim(alpha = alpha[iter - 1], p = p, a_alpha = a_alpha, b_alpha = b_alpha, 
                                           K = n_clust)
