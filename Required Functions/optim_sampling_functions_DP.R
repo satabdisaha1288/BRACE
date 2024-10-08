@@ -35,7 +35,6 @@ sample_theta_optim <- function(K, gamma_sqr, sigma_sqr, abun_dat_agg, resp, temp
 }
 
 
-#Sample theta using elliptical slice sampling #Generic sampling
 
 #Sample sigma_sqr given clust_ind, sigma_sqr, alpha
 sample_sigmasqr_optim<-function(a_sigma,n,b_sigma, resp, abun_dat_agg, theta)
@@ -51,7 +50,7 @@ sample_sigmasqr_optim<-function(a_sigma,n,b_sigma, resp, abun_dat_agg, theta)
 #Sample gamma_sqr given theta, clust_ind, alpha, sigma_sqr
 sample_gammasqr_optim<- function(a_gamma, K, theta)
 {
-  gamma_shape = a_gamma + K/2
+  gamma_shape = a_gamma + (K-1)/2
   gamma_scale =  b_gamma + 0.5* crossprod(theta)
   gamma_sqr <-rinvgamma(1, shape = gamma_shape, scale = gamma_scale)
   return(gamma_sqr)
