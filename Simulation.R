@@ -7,7 +7,7 @@ repl = 10
 #Correlation coefficient
 rho = 0.5
 #Signal to noise ratio
-snr = 5
+snr = 1
 # Number of predictors
 p = 100
 #Number of samples
