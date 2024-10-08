@@ -8,11 +8,12 @@ simdata = simdata_dep
 n = n
 p = p
 #Load required functions
-setwd("/Users/satab/Documents/BRACElet/Required Functions")
+setwd("/BRACElet/Required Functions")
 source("helperFunctions.R") # helper functions 
 source("sampling.functions.DP.R") #sample theta, gamma_sqr, sigma_sqr, alpha
 source("optim_sampling_functions_DP.R") # optimized version
-source("get_log_lik_dppm.R") # calculate log likehood for sampling cluster labels
+#source("get_log_lik_dppm.R") # calculate log likehood for sampling cluster labels
+source("get_log_lik_dppm_updated.R") # calculate log likehood for sampling cluster labels
 source("clusterUpdatedppm.R") # sample cluster labels
 source("split_replicates_test_train.R") # for splitting the data
 train_test_split<-split_replicates_test_train(split_ratio = 0.8,
@@ -118,7 +119,7 @@ while(repp <= repl)
 
 # #Dependent
 # type='structuredep0.5';
-# setwd("/Users/satab/Documents/BRACElet/Data")
+# setwd("/BRACElet/Output")
 # datafile<-paste(type,'_snr',snr,'_n',n,'_p',p,'rho',rho,'repl',repl,"_outputs.RData",sep="")
 # save(results,n,p,repl,rho, file=datafile)
 
