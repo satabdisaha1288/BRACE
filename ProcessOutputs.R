@@ -11,7 +11,7 @@ recreate_beta_iteration <- function(iter, labels, theta) {
   return(beta_vector)
 }
 
-# Recreate new_beta_train using lapply and sapply
+# Recreate new_beta_train 
 new_beta_train <- lapply(1:repl, function(repp) {
   sapply((nburn + 1):(iterr), function(iter) {
     recreate_beta_iteration(iter, beta_clust_labels_train[[repp]][, iter], results[[repp]]$theta[[iter]])
@@ -21,14 +21,13 @@ new_beta_train <- lapply(1:repl, function(repp) {
 new_beta_train<-lapply(new_beta_train, function(x) round(x,2))
 #Create sum of the beta vector 
 new_beta_sum<-sapply(new_beta_train, colSums)
+
 #Plot histogram
 hist(new_beta_sum, breaks = 20)
-#Calculate probability of lying between (-0.1 to 0.1)
-prob.zero.sum_new_beta<-lapply(sum_new_beta, function(x) 
-  length(which(between(x[nburn+1: iterr], -0.2,0.2)==TRUE))/nsamp)
-which(is.na(sum_new_beta))
+
 # Mean of the sum of the beta vector for all replicates
 mean_sum_new_beta = sapply(lapply(new_beta_train, colSums),mean)
+
 # SD of the sum of the beta vector for all replicates
 sd_sum_new_beta = sapply(lapply(new_beta_train, colSums),sd)
 
@@ -36,19 +35,17 @@ colmeans_list<-lapply(new_beta_train, rowMeans)
 sd_new_beta = lapply(new_beta_train, function(x) apply(x,1,sd))
 quantile_new_beta = lapply(new_beta_train, function(x) apply(x, 1, 
                                                              function(x) quantile(x, probs = c (0.025, 0.5,0.975))))
-df<-list()
 
+#Visualize the results
+df<-list()
 for(repp in 1:repl)
 {
   df[[repp]]<-data.frame(beta = simdata$beta, beta_hat = quantile_new_beta[[repp]][2,], 
                          CI_low = quantile_new_beta[[repp]][1,],
                          CI_high =quantile_new_beta[[repp]][3,])
-  df [[repp]]%>%
-    insight::format_table(ci_brackets = c("(", ")")) %>%
-    insight::export_table(format = "html")
 }
 
-#Calculate prediction error
+#Calculate prediction error and L2 Loss (accuracy)
 PE<-list()
 accuracy<-list()
 a4<-list()
@@ -78,12 +75,6 @@ accuracy
 (sd_accuracy = sd(unlist(accuracy)))
 
 RP = simdata$beta!=0
-# PP4 = (samples4[,4]<0)|(samples4[,3]>0)
-# FP4 = sum(PP4=="TRUE"&RP=="FALSE")
-# TP4= sum(PP4=="TRUE"&RP=="TRUE")
-# FN4 = sum(PP4=="FALSE"&RP=="TRUE")
-# TN4 = sum(PP4=="FALSE"&RP=="FALSE")
-
 #Calculate error rates
 FP4 = TP4 = TN4 = FN4 <- vector()
 for(repp in 1:repl)
@@ -107,6 +98,7 @@ mean(FN4); sd(FN4)
 #Compute rand index
 #true clustering
 labels <- match(simdata$beta, unique(simdata$beta))
+#Find a point estimate for final cluster labels
 beta_salso <-lapply(beta_clust_labels_train, function(x) salso::salso(t(x), 
                                                                       maxNClusters = 10))
 
