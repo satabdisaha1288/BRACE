@@ -14,4 +14,11 @@ This directory has all the functions required for running scripts Simulation.R a
 * RunBRACElet.R runs BRACElet for the simulated data example with compositional predictors and a continuous response.
 * ProcessOutputs.R processes the outputs returned by RunBRACElet.R and calculates the performance metrics.
 
+# Reproduce Results 
+This directory contains data and code files for reproducing the simulation and real data results in the main manuscript.
+* Real Data folder has the input files required for running file Reproduce_Real_Data_Results.Rmd.
+* Simulated Data folder has the input files required for running the Reproduce_Simulation_Results_BRACE.Rmd.
+* Reproduce_Real_Data_Results.pdf and Reproduce_Simulation_Results_BRACE.pdf has the generated figures for the main manuscript.
+
+
 
