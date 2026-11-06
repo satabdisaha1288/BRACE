@@ -7,10 +7,10 @@
 #' @param sigma standard deviation for the noise terms, which are iid normal with mean 0
 #' @param beta regression coefficients for the compositional predictors
 #' @param m a scaler. For chosen components with large mean,
-#'  log(p * m) is added to the non-normalized data 
+#'  log(p * m) is added to the non-normalized data
 #'  before the data are converted to compositional
-#' @param high.mag an index vector with value(s) in [1,p], specifying which component(s) 
-#' of compositions is has a mean of higher magnitude. 
+#' @param high.mag an index vector with value(s) in [1,p], specifying which component(s)
+#' of compositions is has a mean of higher magnitude.
 #' @param beta0 coefficient of intercept
 #' @param intercept logical value indicates whether to include an intercept
 #' @param repl Number of replicates of the simulated data
@@ -30,15 +30,34 @@ generate_compositional_data_replicates<-function(n, p, rho,sigma, beta, m ,high.
   i <- 1:p
   j <- 1:p
   Sigma <- rho^abs(outer(i, j, "-"))
+
+  # Sigma <- matrix(0, nrow = p, ncol = p)
+  # # Update the covariance matrix
+  # for (i in 1:p) {
+  #   for (j in 1:p) {
+  #     if (beta[i] != 0 && beta[i] == beta[j]) {
+  #       # Same elements (within clusters)
+  #       Sigma[i, j] <- 0.75 - 0.015 * abs(i - j)
+  #     } else if (beta[i] != 0 && beta[j] != 0 && beta[i] != beta[j]) {
+  #       # Different elements (between clusters) with both non-zero
+  #       Sigma[i, j] <- 0.4 - 0.02 * abs(i - j)
+  #     } else {
+  #       # Elements where either beta[i] or beta[j] is zero
+  #       Sigma[i, j] <- 0
+  #     }
+  #   }
+  # }
+  # # Output the resulting covariance matrix
+  # Sigma = Sigma + t(Sigma) + diag(p)
   #Generate matrix O
   data_mat <-replicate( repl, mvrnorm(n,theta, Sigma), simplify = FALSE)
-  #  Transform and scale matrix 
+  #  Transform and scale matrix
   tran = lapply(data_mat, function(x) exp(gamma*x))
   rel.abun.dat = lapply(tran, function(x) x/rowSums(x))
   #Generate the compositional abundance matrix
   X<-lapply( rel.abun.dat, function(x) log(x))
   #Generate the responses
-  y <- lapply( X, function(z) z %*% as.matrix(beta) + 
+  y <- lapply( X, function(z) z %*% as.matrix(beta) +
                  (as.integer(intercept) * beta0) + epsilon)
   simdata = list('y'=y, 'X_abs' = tran, intercept = intercept,
               'X_RelAbun' = rel.abun.dat,'X_logRelAbun'=X,'beta'=beta,'epsilon'=epsilon)

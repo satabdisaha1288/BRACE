@@ -1,0 +1,8 @@
+.DS_Store
+.Rhistory
+.Rproj.user/
+*.Rproj
+_to_delete/
+Reproduce_Results/Figures/
+_local_fixed_code/
+archived/

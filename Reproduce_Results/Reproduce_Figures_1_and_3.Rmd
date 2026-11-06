@@ -1,0 +1,547 @@
+---
+title: "Reproducing Figures 1 and 3"
+subtitle: "BRACE analysis of the ORIGINS oral microbiome data"
+output:
+  pdf_document:
+    toc: false
+geometry: margin=1in
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, results = "hide", message = FALSE,
+                      warning = FALSE,
+                      fig.align = "center")
+```
+
+This document regenerates Figures 1 and 3 of the manuscript from saved BRACE outputs; the
+MCMC sampler is not re-run. Knit it from the folder that contains it. That folder also holds
+the three input files:
+
+- `Demmer_phyloseq_processed.rds`: processed ORIGINS data (phyloseq object with 111 samples,
+  130 species and the phylogenetic tree).
+- `continuous_spearman_screening_relative_abundance.csv`: Spearman correlations between
+  species relative abundances and fasting insulin.
+- `Pseudocount_0.5_postSALSO_K7_results_2chain.Rdata`: BRACE posterior output (2 chains)
+  after SALSO partition estimation and cluster-conditional resampling of the cluster effects.
+
+Each figure is also saved as a PDF file in `Figures/`. The complete code is listed in the
+Appendix.
+
+```{r libraries}
+library(phyloseq)
+library(ape)
+library(ggtree)
+library(dplyr)
+library(tibble)
+library(stringr)
+library(ggplot2)
+library(ggtext)
+library(reshape2)
+library(patchwork)
+
+dir.create("Figures", showWarnings = FALSE)
+```
+
+```{r helpers}
+## Display labels for taxa: species name if informative, otherwise "Genus sp.",
+## otherwise the lowest informative higher rank.
+make_tax_label_vec <- function(pseq,
+                               ranks = c("Species", "Genus", "Family", "Order",
+                                         "Class", "Phylum", "Domain", "Kingdom"),
+                               fallback = c("short_id", "taxa_id"),
+                               add_rank_suffix = FALSE,
+                               genus_sp_when_species_bad = TRUE) {
+  fallback <- match.arg(fallback)
+  tax_mat <- as.data.frame(tax_table(pseq), stringsAsFactors = FALSE)
+  tax_mat$taxa_id <- taxa_names(pseq)
+  for (nm in c("Species", "Genus", "Family", "Order", "Class", "Phylum", "Domain",
+               "Kingdom"))
+    if (!nm %in% colnames(tax_mat)) tax_mat[[nm]] <- NA_character_
+  ranks <- intersect(ranks, colnames(tax_mat))
+  cand_ranks <- setdiff(ranks, c("Species", "Genus"))
+  clean_tax <- function(x) {
+    x <- as.character(x)
+    x <- str_replace(x, "^D_\\d+__", "")
+    x <- str_replace(x, "^[a-z]__", "")
+    x <- str_replace_all(x, "_", " ")
+    str_squish(x)
+  }
+  strip_trailing_bacterium <- function(x) {
+    x <- str_squish(as.character(x))
+    str_squish(str_replace(x, regex("\\bbacterium\\b\\s*$", ignore_case = TRUE), ""))
+  }
+  bad_core <-
+    regex("uncultured|unclassified|unknown|unidentified|unassigned|metagenome",
+          ignore_case = TRUE)
+  is_bad_species <- function(x) {
+    x <- str_squish(as.character(x))
+    is.na(x) || x == "" || str_detect(x, bad_core) ||
+      str_detect(x, regex("^sp\\.?$|\\bsp\\.?$", ignore_case = TRUE)) ||
+      str_detect(x, regex("\\bbacterium\\b", ignore_case = TRUE))
+  }
+  is_bad_nonspecies <- function(x) {
+    x <- str_squish(as.character(x))
+    is.na(x) || x == "" || str_detect(x, bad_core) ||
+      str_detect(x, regex("^sp\\.?$|\\bsp\\.?$", ignore_case = TRUE)) ||
+      x %in% c("bacterium", "Bacterium")
+  }
+  tax_df <- tax_mat %>%
+    mutate(across(all_of(ranks), clean_tax)) %>%
+    mutate(across(all_of(setdiff(ranks, "Species")), strip_trailing_bacterium)) %>%
+    rowwise() %>%
+    mutate(
+      fallback_label = if (fallback == "short_id") {
+        str_replace_all(substring(taxa_id, 4), "_", " ")
+      } else {
+        str_replace_all(taxa_id, "_", " ")
+      },
+      tax_label = {
+        sp <- Species; gen <- Genus
+        if (!is_bad_species(sp)) {
+          lbl <- sp; if (add_rank_suffix) lbl <- paste0(lbl, " (Species)"); lbl
+        } else if (genus_sp_when_species_bad && !is_bad_nonspecies(gen)) {
+          lbl <- paste0(gen, " sp.")
+          if (add_rank_suffix) lbl <- paste0(lbl, " (Genus)")
+          lbl
+        } else {
+          vals <- if (length(.env$cand_ranks) > 0) {
+            c_across(all_of(.env$cand_ranks))
+          } else {
+            character(0)
+          }
+          if (length(vals) == 0) fallback_label else {
+            bad <- vapply(vals, is_bad_nonspecies, logical(1))
+            vals[bad] <- NA_character_; vals[vals == ""] <- NA_character_
+            idx <- which(!is.na(vals))[1]
+            if (!is.na(idx)) {
+              lbl <- vals[idx]
+              if (add_rank_suffix) lbl <- paste0(lbl, " (", .env$cand_ranks[idx], ")")
+              lbl
+            } else fallback_label
+          }
+        }
+      }
+    ) %>%
+    ungroup() %>%
+    select(taxa_id, tax_label)
+  setNames(tax_df$tax_label, tax_df$taxa_id)
+}
+
+## Canonical taxon key used for joining (display labels are not unique)
+canon_taxon <- function(x) {
+  x <- as.character(x)
+  x <- str_squish(x)
+  x <- str_replace_all(x, "\\.+$", "")
+  x <- str_replace_all(x, "[.]", "_")
+  x <- str_replace_all(x, "__+", "__")
+  x <- str_replace_all(x, "_+", "_")
+  x
+}
+```
+
+```{r data}
+pseq <- readRDS("Demmer_phyloseq_processed.rds")
+pseq_rank     <- tax_glom(pseq, taxrank = "Species", NArm = FALSE)
+pseq_rank_rel <- transform_sample_counts(pseq_rank, function(x) x / sum(x))
+
+screen_cont_results <- read.csv("continuous_spearman_screening_relative_abundance.csv",
+                                stringsAsFactors = FALSE)
+
+load("Pseudocount_0.5_postSALSO_K7_results_2chain.Rdata")
+# Z_fixed, selected_indices_cl, quantile_mat_cl, salso_summ_fixed, ...
+cat(sprintf("Post-SALSO selection: %d features in %d active clusters\n",
+            length(selected_indices_cl), K_active))
+```
+
+\clearpage
+# Figure 1
+
+```{r fig1-data}
+tax_label_vec <- make_tax_label_vec(pseq_rank_rel, fallback = "short_id",
+                                    add_rank_suffix = FALSE)
+tax_map <- tibble(
+  taxon       = names(tax_label_vec),
+  taxon_key   = canon_taxon(taxon),
+  taxon_label = unname(tax_label_vec)
+) %>%
+  distinct(taxon_key, .keep_all = TRUE)
+
+assoc <- screen_cont_results %>%
+  filter(!is.na(rho), !is.na(z_value), !is.na(p_value)) %>%
+  mutate(
+    direction = if_else(rho > 0, "Pos with insulin", "Neg with insulin"),
+    taxon_key = canon_taxon(taxon)
+  ) %>%
+  left_join(tax_map %>% select(taxon_key, taxon_label), by = "taxon_key")
+
+top20 <- bind_rows(
+  assoc %>% filter(rho > 0) %>% arrange(desc(rho)) %>% slice_head(n = 10),
+  assoc %>% filter(rho < 0) %>% arrange(rho)       %>% slice_head(n = 10)
+) %>%
+  distinct(taxon, .keep_all = TRUE)
+
+## Match on the taxon key, not the display label: labels such as "Leptotrichia sp."
+## are shared by several taxa.
+assoc <- assoc %>% mutate(is_top20 = taxon_key %in% canon_taxon(top20$taxon))
+
+rho_vec   <- setNames(assoc$rho, assoc$taxon)
+tree_full <- phy_tree(pseq)
+shared    <- intersect(names(rho_vec), tree_full$tip.label)
+tree_full <- drop.tip(tree_full, setdiff(tree_full$tip.label, shared))
+tree_full <- ladderize(tree_full)
+rho_vec   <- rho_vec[tree_full$tip.label]
+```
+
+```{r fig1, fig.width = 15, fig.height = 7.5, out.width = "7.3in", out.extra = "angle=90"}
+## Panel A: top 10 positive and top 10 negative correlations
+bar_df <- assoc %>%
+  filter(is_top20) %>%
+  select(taxon, taxon_label, rho, p_value) %>%
+  arrange(rho) %>%
+  mutate(
+    direction   = if_else(rho > 0, "Positive", "Negative"),
+    significant = p_value < 0.10,
+    taxon_label = factor(taxon_label, levels = taxon_label),
+    sig_x       = if_else(rho > 0, rho + 0.009, rho - 0.009)
+  )
+stopifnot(nrow(bar_df) == 20, sum(bar_df$rho > 0) == 10, sum(bar_df$rho < 0) == 10)
+
+p_hits <- ggplot(bar_df, aes(x = rho, y = taxon_label, fill = direction)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey40",
+             linewidth = 0.55) +
+  geom_col(width = 0.58, color = "grey25", linewidth = 0.30) +
+  geom_point(data = bar_df %>% filter(significant),
+             aes(x = sig_x, y = taxon_label, shape = "Marginal p-value < 0.10"),
+             inherit.aes = FALSE, fill = "white", color = "black",
+             stroke = 0.8, size = 3) +
+  scale_fill_manual(values = c("Negative" = "#0072B2", "Positive" = "#D55E00")) +
+  scale_shape_manual(values = c("Marginal p-value < 0.10" = 21), name = NULL) +
+  scale_x_continuous(breaks = seq(-0.2, 0.2, by = 0.1), limits = c(-0.235, 0.255),
+                     expand = expansion(mult = c(0.01, 0.01))) +
+  labs(x = expression("Spearman correlation (" * rho * ")"), y = NULL, tag = "A") +
+  guides(fill = "none",
+         shape = guide_legend(override.aes = list(fill = "white", color = "black",
+                                                  size = 3, stroke = 0.8))) +
+  theme_classic(base_size = 13) +
+  theme(
+    axis.title.x = element_text(face = "bold", size = 14, margin = margin(t = 10)),
+    axis.text.x  = element_text(size = 11, color = "black"),
+    axis.text.y  = element_text(size = 11, color = "black"),
+    axis.ticks   = element_line(color = "black", linewidth = 0.4),
+    panel.grid.major.x = element_line(color = "grey90", linewidth = 0.4),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor   = element_blank(),
+    legend.position = "bottom", legend.justification = "left", legend.box.just = "left",
+    legend.text = element_text(size = 10.5),
+    plot.tag = element_text(face = "bold", size = 16),
+    plot.margin = margin(10, 15, 8, 10)
+  )
+
+## Panel B: phylogenetic tree, tips coloured by rho, same 20 species labelled
+full_tip_df <- tibble(
+  label       = tree_full$tip.label,
+  rho         = rho_vec[tree_full$tip.label],
+  direction   = if_else(rho > 0, "Pos with insulin", "Neg with insulin"),
+  taxon_clean = label %>%
+    sub("^s__", "", .) %>% sub("\\.$", "", .) %>% gsub("_", " ", .),
+  is_top20    = label %in% top20$taxon
+) %>%
+  mutate(taxon_key = canon_taxon(label))
+
+lookup <- tax_map %>% distinct(taxon_key, .keep_all = TRUE) %>%
+  { setNames(.$taxon_label, .$taxon_key) }
+full_tip_df <- full_tip_df %>%
+  mutate(taxon_clean = if_else(is_top20 & !is.na(lookup[taxon_key]),
+                               unname(lookup[taxon_key]), taxon_clean))
+
+p_tree <- ggtree(tree_full, layout = "circular", size = 0.3) %<+% full_tip_df +
+  geom_tippoint(aes(colour = rho), size = 1.2, alpha = 0.8) +
+  geom_tiplab2(data = . %>% filter(isTip & is_top20),
+               aes(label = taxon_clean, colour = rho),
+               size = 3.2, offset = 0.005, hjust = 0) +
+  scale_colour_gradient2(low = "#0072B2", mid = "grey80", high = "#D55E00",
+                         midpoint = 0, name = expression(rho)) +
+  labs(tag = "B") +
+  theme(legend.position = "right",
+        legend.title = element_text(size = 10), legend.text = element_text(size = 8),
+        plot.tag = element_text(face = "bold", size = 16),
+        plot.margin = margin(0, 10, 0, 0))
+
+fig1 <- (p_hits | p_tree) + plot_layout(widths = c(1, 1))
+fig1
+ggsave("Figures/Figure1.pdf", fig1, width = 15, height = 7.5)
+```
+
+**Fig. 1.** Species-level associations with fasting insulin are not phylogenetically structured. (A) Spearman correlations between taxa relative abundances and insulin levels for the 10 most positively and 10 most negatively correlated taxa. Bar length represents the magnitude and direction of Spearman's $\rho$; open circles indicate marginal p-values < 0.10. (B) Phylogenetic tree labeled for the same 20 species, with tip colors indicating direction of association. Closely related taxa frequently display opposing associations, for example, *Selenomonas artemidis* (positive) and *Selenomonas* sp. (negative) are phylogenetic neighbors yet fall on opposite sides of the association spectrum.
+
+
+\clearpage
+
+# Figure 3
+
+**Fig. 3.** Post-SALSO constrained resampling summary for BRACE-selected features. Panels (A)–(D) are shown on the following pages.
+
+```{r fig3-setup}
+tax_label_vec <- make_tax_label_vec(pseq, fallback = "short_id",
+                                    add_rank_suffix = FALSE)
+cluster_palette <- c(
+  "1" = "blue",    "2" = "green",   "3" = "#1f77b4",
+  "4" = "#ff7f0e", "5" = "#d62728", "6" = "#9467bd",
+  "7" = "#8c564b", "8" = "#e377c2"
+)
+cl_indicators <- Z_fixed[selected_indices_cl]
+cl_relabelled <- as.integer(factor(cl_indicators))
+```
+
+## Panel A
+
+```{r fig3a, fig.width = 7, fig.height = 4, out.width = "90%"}
+df <- tibble(
+  Method    = c("CLR-Lasso", "C-Lasso", "Coda-Lasso", "BAZE", "BRACE", "BCGLM"),
+  NVar_mean = c(11.37, 1.10, 15.83, 8.21, 10.00, 0.00),
+  NVar_sd   = c(15.61, 1.06, 15.85, 3.69, 3.20, 0.00),
+  PE_mean   = c(0.4127, 0.3999, 0.4512, 0.5786, 0.2199, 0.4023),
+  PE_sd     = c(0.0732, 0.0704, 0.0835, 0.1464, 0.0587, 0.0723)
+)
+method_order <- df %>% arrange(PE_mean) %>% pull(Method) %>% rev()
+df <- df %>% mutate(Method = factor(Method, levels = method_order))
+
+plot_df <- bind_rows(
+  df %>% transmute(Method, Metric = "Prediction error (PE)",        Mean = PE_mean,
+                   SD = PE_sd),
+  df %>% transmute(Method, Metric = "Number of selected variables", Mean = NVar_mean,
+                   SD = NVar_sd)
+) %>%
+  mutate(xmin = pmax(Mean - SD, 0), xmax = Mean + SD)
+
+method_cols <- c("CLR-Lasso" = "#7F7F7F", "C-Lasso" = "#E69F00",
+                 "Coda-Lasso" = "#009E73",
+                 "BAZE" = "#CC79A7", "BRACE" = "#0072B2", "BCGLM" = "#D55E00")
+
+fig3a <- ggplot(plot_df, aes(y = Method, x = Mean, fill = Method)) +
+  facet_wrap(~ Metric, scales = "free_x", nrow = 1) +
+  geom_segment(aes(x = xmin, xend = xmax, y = Method, yend = Method, color = Method),
+               linewidth = 1.1, lineend = "round") +
+  geom_segment(aes(x = xmin, xend = xmin, y = as.numeric(Method) - 0.12,
+                   yend = as.numeric(Method) + 0.12, color = Method),
+               linewidth = 0.8, inherit.aes = FALSE, data = plot_df) +
+  geom_segment(aes(x = xmax, xend = xmax, y = as.numeric(Method) - 0.12,
+                   yend = as.numeric(Method) + 0.12, color = Method),
+               linewidth = 0.8, inherit.aes = FALSE, data = plot_df) +
+  geom_point(aes(color = Method), size = 3.6) +
+  geom_point(data = subset(plot_df, Method == "BRACE"),
+             shape = 21, fill = "white", color = "black", size = 4.8, stroke = 0.8) +
+  geom_point(data = subset(plot_df, Method == "BRACE"), aes(color = Method),
+             size = 3.6) +
+  scale_color_manual(values = method_cols) +
+  scale_fill_manual(values = method_cols) +
+  labs(x = "Mean ± SD", y = NULL, title = "") +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "none",
+    panel.grid.major.y = element_blank(), panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_line(color = "grey85", linewidth = 0.4),
+    strip.text  = element_text(face = "bold", size = 13),
+    axis.text.y = element_text(color = "black", size = 12, face = "bold"),
+    axis.text.x = element_text(color = "black"),
+    axis.title.x = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.7),
+    plot.margin = margin(10, 10, 10, 10)
+  )
+fig3a
+ggsave("Figures/Figure3A.pdf", fig3a, width = 7, height = 4)
+```
+
+**Fig. 3 (A)** Comparison of competing methods in terms of sparsity and predictive performance. The left panel shows the mean number of selected variables, and the right panel shows the mean prediction error (PE), with horizontal error bars representing one standard deviation across 30 replicates.
+
+\clearpage
+
+## Panel B
+
+```{r fig3b, fig.width = 8, fig.height = 6, out.width = "90%"}
+plot_data_cl <- data.frame(
+  lower.ci      = quantile_mat_cl[1, selected_indices_cl],
+  estimate      = quantile_mat_cl[2, selected_indices_cl],
+  upper.ci      = quantile_mat_cl[3, selected_indices_cl],
+  Row_Names     = tax_label_vec[taxa_names(pseq)[selected_indices_cl]],
+  cluster_names = as.factor(cl_relabelled),
+  stringsAsFactors = FALSE
+)
+plot_data_cl <- plot_data_cl %>%
+  mutate(sign = ifelse(estimate < 0, "Negative", "Positive")) %>%
+  arrange(sign, ifelse(sign == "Negative", -abs(estimate), abs(estimate)))
+plot_data_cl$Row_Names <- factor(plot_data_cl$Row_Names,
+                                 levels = plot_data_cl$Row_Names)
+
+fig3b <- ggplot(plot_data_cl, aes(x = Row_Names, y = estimate,
+                                  color = cluster_names)) +
+  geom_segment(aes(xend = Row_Names, y = lower.ci, yend = upper.ci),
+               linewidth = 0.5) +
+  geom_point(size = 3) +
+  geom_hline(yintercept = 0, color = "black", linewidth = 1) +
+  scale_color_manual(values = cluster_palette) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = 0, alpha = 0.2,
+           fill = "lightblue") +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 0, ymax = Inf, alpha = 0.2,
+           fill = "lightpink") +
+  annotate("text", x = 5, y = max(plot_data_cl$upper.ci) - 0.03, label = "High Risk",
+           fontface = "bold", hjust = 1.1, size = 5, color = "magenta") +
+  annotate("text", x = nrow(plot_data_cl) - 2, y = min(plot_data_cl$lower.ci) + 0.03,
+           label = "Low Risk", fontface = "bold", hjust = 0, size = 5, color = "blue") +
+  coord_flip() +
+  labs(x = "", y = "Coefficient Estimate", color = "Cluster") +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    axis.text  = element_text(size = 14, face = "bold"),
+    axis.title = element_text(size = 14, face = "bold"),
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white", color = "black")
+  )
+fig3b
+ggsave("Figures/Figure3B.pdf", fig3b, width = 8, height = 6)
+```
+
+**Fig. 3 (B)** Posterior point estimates and corresponding credible intervals for features selected by BRACE in the post-SALSO constrained resampling analysis. Point colours indicate SALSO-estimated cluster membership.
+
+\clearpage
+
+## Panel C
+
+```{r fig3c, fig.width = 8, fig.height = 6, out.width = "90%"}
+PSM <- as.matrix(salso_summ_fixed$psm)
+rownames(PSM) <- colnames(PSM) <- substring(taxa_names(pseq), 4)
+
+PSM_sel <- PSM[selected_indices_cl, selected_indices_cl]
+dimnames(PSM_sel) <- list(tax_label_vec[selected_indices_cl],
+                          tax_label_vec[selected_indices_cl])
+sel_order  <- order(Z_fixed[selected_indices_cl])
+PSM_sel    <- PSM_sel[sel_order, sel_order]
+Z_sel_ord  <- Z_fixed[selected_indices_cl][sel_order]
+cl_sel_ord <- as.integer(factor(Z_sel_ord))
+
+taxa_label_cols     <- unname(cluster_palette[as.character(cl_sel_ord)])
+taxa_labels_colored <- setNames(
+  sprintf("<span style='color:%s;'><b>%s</b></span>", taxa_label_cols,
+          rownames(PSM_sel)),
+  rownames(PSM_sel)
+)
+
+melted_sel <- melt(PSM_sel)
+colnames(melted_sel) <- c("Taxon1", "Taxon2", "Probability")
+melted_sel$Taxon1 <- factor(melted_sel$Taxon1, levels = rownames(PSM_sel))
+melted_sel$Taxon2 <- factor(melted_sel$Taxon2, levels = rownames(PSM_sel))
+breaks <- which(diff(cl_sel_ord) != 0) + 0.5
+
+fig3c <- ggplot(melted_sel, aes(x = Taxon2, y = Taxon1, fill = Probability)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "white", mid = "#FDD49E", high = "#D7301F",
+                       midpoint = 0.5, limits = c(0, 1),
+                       name = "Co-clustering\nProbability") +
+  geom_hline(yintercept = breaks, color = "black", linewidth = 0.5) +
+  geom_vline(xintercept = breaks, color = "black", linewidth = 0.5) +
+  scale_x_discrete(labels = taxa_labels_colored) +
+  scale_y_discrete(labels = taxa_labels_colored) +
+  labs(x = "", y = "") +
+  theme_minimal() +
+  theme(
+    axis.title  = element_text(size = 14, face = "bold"),
+    axis.text.x = ggtext::element_markdown(angle = 90, hjust = 1, vjust = 0.5,
+                                           size = 14),
+    axis.text.y = ggtext::element_markdown(size = 14),
+    panel.grid  = element_blank()
+  )
+fig3c
+ggsave("Figures/Figure3C.pdf", fig3c, width = 8, height = 6)
+```
+
+**Fig. 3 (C)** Posterior co-clustering probability matrix (posterior similarity matrix) for the selected features, ordered by the SALSO cluster labels.
+
+\clearpage
+
+## Panel D
+
+```{r fig3d, fig.width = 5, fig.height = 4, out.width = "65%"}
+calculate_correlation_statistics <- function(correlation_matrix, cluster_labels) {
+  cl_vals <- sort(unique(cluster_labels))
+  K <- length(cl_vals)
+  within  <- setNames(rep(NA_real_, K), paste0("C", cl_vals))
+  between <- matrix(NA_real_, K, K,
+                    dimnames = list(paste0("C", cl_vals), paste0("C", cl_vals)))
+  for (ii in seq_along(cl_vals)) {
+    idx_i <- which(cluster_labels == cl_vals[ii])
+    if (length(idx_i) >= 2) {
+      corr_i <- correlation_matrix[idx_i, idx_i, drop = FALSE]
+      # off-diagonal pairs only
+      within[ii] <- mean(corr_i[upper.tri(corr_i)], na.rm = TRUE)
+    }
+  }
+  for (ii in seq_along(cl_vals)) for (jj in seq_along(cl_vals)) if (ii != jj) {
+    idx_i <- which(cluster_labels == cl_vals[ii])
+    idx_j <- which(cluster_labels == cl_vals[jj])
+    between[ii, jj] <- mean(correlation_matrix[idx_i, idx_j, drop = FALSE], na.rm = TRUE)
+  }
+  list(within_cluster_correlations = within, between_cluster_correlations = between,
+       cluster_values = cl_vals)
+}
+
+## Phylogenetic correlation matrix from the tree (shared branch length, standardised)
+dist_mat_full      <- vcv(phy_tree(pseq), corr = TRUE)
+dist_mat_sel_corr  <- dist_mat_full[selected_indices_cl, selected_indices_cl]
+sel_cluster_labels <- cl_relabelled
+
+## Non-singleton clusters, keeping the cluster IDs used in Panel B
+cluster_sizes     <- table(sel_cluster_labels)
+non_singleton_cls <- as.integer(names(cluster_sizes[cluster_sizes >= 2]))
+keep        <- sel_cluster_labels %in% non_singleton_cls
+dist_mat_ns <- dist_mat_sel_corr[keep, keep, drop = FALSE]
+labels_ns   <- sel_cluster_labels[keep]
+
+statistics_ns <- calculate_correlation_statistics(dist_mat_ns, labels_ns)
+diag(statistics_ns$between_cluster_correlations) <-
+  statistics_ns$within_cluster_correlations
+round(statistics_ns$between_cluster_correlations, 2)
+
+corr_table_ns <- statistics_ns$between_cluster_correlations
+cl_ids_ns     <- statistics_ns$cluster_values
+axis_labels_colored <- sapply(cl_ids_ns, function(cid)
+  sprintf("<span style='color:%s;'><b>C%d</b></span>",
+          cluster_palette[as.character(cid)], cid))
+names(axis_labels_colored) <- paste0("C", cl_ids_ns)
+
+melted_ns <- melt(corr_table_ns[nrow(corr_table_ns):1, , drop = FALSE])
+
+fig3d <- ggplot(melted_ns, aes(Var2, Var1, fill = value)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%.2f", value)), size = 5, fontface = "bold") +
+  scale_fill_gradient(low = "white", high = "red", limits = c(0.1, NA)) +
+  scale_x_discrete(labels = axis_labels_colored) +
+  scale_y_discrete(labels = axis_labels_colored) +
+  labs(x = "Cluster", y = "Cluster", fill = "Correlation") +
+  theme_minimal() +
+  theme(
+    axis.text.x  = ggtext::element_markdown(size = 14, face = "bold"),
+    axis.text.y  = ggtext::element_markdown(size = 14, face = "bold"),
+    axis.title   = element_text(size = 14, face = "bold"),
+    legend.text  = element_text(size = 14, face = "bold"),
+    legend.title = element_text(size = 14, face = "bold")
+  )
+fig3d
+ggsave("Figures/Figure3D.pdf", fig3d, width = 5, height = 4)
+```
+
+**Fig. 3 (D)** Mean phylogenetic correlation matrix summarising within-cluster and between-cluster phylogenetic correlations among the selected features, aggregated according to the SALSO-derived clusters.
+
+\clearpage
+
+# Appendix: code
+
+```{r appendix, ref.label = setdiff(knitr::all_labels(), c("setup", "appendix", "session-info")), echo = TRUE, eval = FALSE}
+```
+
+## Session information
+
+```{r session-info, results = "markup"}
+sessionInfo()
+```

@@ -1,12 +1,9 @@
-
-# functions to get the prior probabilities of 
-# cluster membership
 get_null_clust_prior <- function(beta_clust_labels, j, alpha_0, p) {
   #is_null <- as.numeric(beta_clust_labels == 0)
   is_null <- as.numeric(beta_clust_labels != 0)
   null_dict <- sort(table(is_null[-j]))
   null_keys <- as.vector(names(null_dict))
-  
+
   # all 0 or all 1 need to adjust
   # All 0 or all 1 need to be adjusted
   if (identical(sort(setdiff(null_keys, c("0", "1"))), character(0))) {
@@ -37,7 +34,6 @@ get_act_clust_prior <- function(beta_clust_labels, j, alpha) {
   return(clust_prior)
 }
 
-
 get_clust_prior_dppm <- function(beta_clust_labels, alpha, alpha_0, p, j) {
   null_prior <- get_null_clust_prior(beta_clust_labels, j, alpha_0, p)
   clust_prior <- get_act_clust_prior(beta_clust_labels, j, alpha)
@@ -50,6 +46,7 @@ get_clust_prior_dppm <- function(beta_clust_labels, alpha, alpha_0, p, j) {
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 # function to take into account that everything can be null
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+
 get_prior_dppm <- function(j, beta_clust_labels, alpha_0, alpha, p) {
   # determining the null clusters and the clusters which are non-zero
   is_null <- as.numeric(beta_clust_labels == 0)
@@ -58,7 +55,7 @@ get_prior_dppm <- function(j, beta_clust_labels, alpha_0, alpha, p) {
   # it is possible for all predictors to be set to zero so we have
   # to deal with that in the prior probability calculation
   if (length(temp_d_ind) == 0) {
-    # the prior if everything is null is the 2-component mixture 
+    # the prior if everything is null is the 2-component mixture
     # model prior; the proposal is that the element will not be null
     K <- 1
     prior_probs <- get_null_clust_prior(beta_clust_labels, j, alpha_0, p)
@@ -69,29 +66,45 @@ get_prior_dppm <- function(j, beta_clust_labels, alpha_0, alpha, p) {
   #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
   # the case where there are non-null predictors
   #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-  
+
   # setup for prior probs
   clust_dict <- table(temp_d_ind)
   #clust_names <- as.vector(names(clust_dict))
   is_alone <- sum(beta_clust_labels[j] == temp_d_ind) == 0
-  
+
   # rearrange the cluster indicators and lambdas
   K <- length(clust_names) + 1
-  
+
   # get the prior probabilities
-  prior_probs <- get_clust_prior_dppm(beta_clust_labels = beta_clust_labels, 
+  prior_probs <- get_clust_prior_dppm(beta_clust_labels = beta_clust_labels,
                                       alpha = alpha , alpha_0 = alpha_0, p = p, j = j)
-  
+
   #names(prior_probs)<-c(0:(K))
   return(list(prior_probs,K))
-  
-}
 
+}
+# Source the C++ file or define the C++ code directly in your R script
+#sourceCpp("get_log_lik_dppm_optim_cpp.cpp")
+
+
+#' Title
+#'
+#' @param beta_clust_labels Cluster labels for the regression coefficients
+#' @param P_c Number of non-zero predictors
+#' @param X Covariate matrix
+#' @param alpha Precision parameter for the Spiked DP process
+#' @param alpha_0 Parameter for the Dirichlet distribution that serves as a prior for the probability of the spike
+#' @param sigma_sqr Variance of epsilon
+#' @param gamma_sqr Prior variance of theta
+#' @param y Continuous outcome
+#'
+#' @return Updated labels for the regression coefficients
+#'
 update_beta_clust_labels_dppm <- function(beta_clust_labels, P_c, X, alpha, alpha_0,
-                                          sigma_sqr, gamma_sqr,y) {
-  
+                                          sigma_sqr, gamma_sqr,y,f) {
+
   #iter_seq <- sample(1:P_c, P_c, replace = FALSE)
-  
+
   for (j in 1:P_c) {
     clust_names<-sort(unique(beta_clust_labels))
     K<-length(clust_names)
@@ -126,9 +139,10 @@ update_beta_clust_labels_dppm <- function(beta_clust_labels, P_c, X, alpha, alph
     #print(paste0("prior_probs = ", prior_probs))
     #K <- result[[2]]
     #print(paste0("K =" ,K))
-    
+
     # get the log likelihood under each cluster
     log_lik <- get_log_lik_dppm_optim(beta_clust_labels, p ,j, K = K, X,sigma_sqr, gamma_sqr,y)
+    #log_lik <- get_log_lik_dppm_optim_cpp(beta_clust_labels, p ,j, K = K, X,sigma_sqr, gamma_sqr,y)
     #print(paste0("log_lik = ", log_lik))
     # normalize the posterior probs and sample new cluster membership
     post_probs <- get_clust_post(prior_probs, log_lik)
@@ -140,10 +154,10 @@ update_beta_clust_labels_dppm <- function(beta_clust_labels, P_c, X, alpha, alph
     # rearranging again; need to account for if all is null
     is_null <- as.numeric(beta_clust_labels == 0) # gives index of non zero elements
     temp_d_ind <- beta_clust_labels[is_null == 0]
-    
+
     #clust_names <- as.vector(names(table(temp_d_ind)))
     #K <- length(clust_names)
-    
+
     # create a new cluster if necessary
     #if (new_clust_label == K+1)
     if (new_clust_label == K)
@@ -152,7 +166,7 @@ update_beta_clust_labels_dppm <- function(beta_clust_labels, P_c, X, alpha, alph
       #K = K + 2
       K = K + 1
       names(table_counts)= c(0:(K-1))
-    } 
+    }
     beta_clust_labels[j] <- new_clust_label
     new_clust_label = as.character(new_clust_label)
     #print(paste0("beta_clust_labels[j] =", beta_clust_labels[j]))

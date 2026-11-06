@@ -17,12 +17,12 @@ split_train_test<- function(split_ratio, data){
 #Split all replicates in train test
 split_replicates_test_train<- function(split_ratio, XlogRelAbun, XRelAbun, y){
   y_split = lapply(y, function(x) split_train_test(split_ratio = split_ratio , data = x))
-  XlogRelAbun_split = lapply(XlogRelAbun, function(x) 
+  XlogRelAbun_split = lapply(XlogRelAbun, function(x)
     split_train_test(split_ratio = split_ratio , data = x))
-  XRelAbun_split = lapply(XRelAbun, function(x) 
+  XRelAbun_split = lapply(XRelAbun, function(x)
     split_train_test(split_ratio = split_ratio , data = x))
-  # Xabs_split = lapply(Xabs, function(x) 
+  # Xabs_split = lapply(Xabs, function(x)
   #   split_train_test(split_ratio = split_ratio , data = x))
-  return(list(y_split = y_split, XlogRelAbun_split = XlogRelAbun_split, 
+  return(list(y_split = y_split, XlogRelAbun_split = XlogRelAbun_split,
          XRelAbun_split = XRelAbun_split))
 }

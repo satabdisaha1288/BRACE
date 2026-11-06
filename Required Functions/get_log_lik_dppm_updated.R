@@ -9,6 +9,7 @@ get_log_lik_dppm_optim <- function(beta_clust_labels, p, j, K, X, sigma_sqr, gam
     beta_clust_labels[j] <- k
     temp_beta_clust_labels <- beta_clust_labels[beta_clust_labels != 0]
     f = rbind(as.numeric(table(sort(as.numeric(temp_beta_clust_labels)))))
+    #f = rep(1, length(f))*(1/K)
     n_clust <- length(table(temp_beta_clust_labels))
 
     if (length(temp_beta_clust_labels) == 0) {
