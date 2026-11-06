@@ -38,7 +38,7 @@ install.packages(c("MASS", "MCMCpack", "salso"))
 source("toy_example.R")
 ```
 
-With the default settings this is a quick illustration: one simulated dataset under the AR(1) design of Supplementary Section S5.2 and a short chain of 300 iterations (about 3–4 minutes), so its metrics are comparable to, but not identical with, those in the paper.
+With the default settings this is a quick illustration: one simulated dataset under the AR(1) design of Supplementary Section S5.2 and a short chain of 300 iterations (about 3–4 minutes).
 
 All settings are at the top of the script. To run the full simulation design of the paper, set:
 
@@ -50,11 +50,10 @@ All settings are at the top of the script. To run the full simulation design of 
 | `n_rep` | 30 (2 or more also gives the cross-replicate ARI) |
 | `nburn`, `nsamp` | 5000 and 3000 (8000 iterations, first 5000 discarded) |
 
-A full setting at p = 100 takes several hours; larger p takes longer.
 
 ## Figures 1 and 3 (ORIGINS oral microbiome data)
 
-`Reproduce_Results/Reproduce_Figures_1_and_3.Rmd` regenerates Figures 1 and 3 from the saved BRACE posterior output; the MCMC is not re-run. Knit it from the `Reproduce_Results/` folder (about 20 seconds). The figures are also written as PDF files to `Reproduce_Results/Figures/`.
+`Reproduce_Results/Reproduce_Figures_1_and_3.Rmd` regenerates Figures 1 and 3 from the saved BRACE posterior output. Knit it from the `Reproduce_Results/` folder (about 20 seconds). The figures are also written as PDF files to `Reproduce_Results/Figures/`.
 
 ```r
 install.packages(c("ape", "dplyr", "ggplot2", "ggtext", "patchwork", "reshape2",
