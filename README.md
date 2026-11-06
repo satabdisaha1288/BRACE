@@ -21,13 +21,12 @@ Plate diagram for BRACE. The model combines three components: (i) Bernoulli spik
 ├── toy_example.R                       Simulate data and run BRACE
 ├── Required Functions/                 BRACE sampler and data-generation functions
 ├── images/plate_diagram.png            Plate diagram shown above
-├── Reproduce_Results/
-│   ├── Reproduce_Figures_1_and_3.Rmd   Recreates Figures 1 and 3 (ORIGINS data)
-│   ├── Reproduce_Figures_1_and_3.pdf   Knitted output
-│   ├── Demmer_phyloseq_processed.rds
-│   ├── continuous_spearman_screening_relative_abundance.csv
-│   └── Pseudocount_0.5_postSALSO_K7_results_2chain.Rdata
-└── archived/                           Earlier versions of this repository
+└── Reproduce_Results/
+    ├── Reproduce_Figures_1_and_3.Rmd   Recreates Figures 1 and 3 (ORIGINS data)
+    ├── Reproduce_Figures_1_and_3.pdf   Knitted output
+    ├── Demmer_phyloseq_processed.rds
+    ├── continuous_spearman_screening_relative_abundance.csv
+    └── Pseudocount_0.5_postSALSO_K7_results_2chain.Rdata
 ```
 
 ## Toy example
@@ -66,7 +65,3 @@ rmarkdown::render("Reproduce_Results/Reproduce_Figures_1_and_3.Rmd")
 ```
 
 Panel A of Figure 3 summarises the mean and standard deviation over 30 random train/test splits for each method; these summary values are entered directly in the Rmd.
-
-## Archived material
-
-`archived/` holds earlier versions of this repository for reference: `2024-11_GitHub/` is the version posted with the original submission and `2024-04_local_clone/` an earlier working copy.
